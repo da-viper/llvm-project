@@ -5,6 +5,7 @@ import * as child_process from "child_process";
 import * as fs from "node:fs/promises";
 import { ConfigureButton, OpenSettingsButton } from "./ui/show-error-message";
 import { ErrorWithNotification } from "./ui/error-with-notification";
+import {substituteEnv} from "./config";
 
 const exec = util.promisify(child_process.execFile);
 
@@ -49,6 +50,7 @@ async function findInPath(executable: string): Promise<string | undefined> {
   return undefined;
 }
 
+
 async function findDAPExecutable(): Promise<string | undefined> {
   const executable = process.platform === "win32" ? "lldb-dap.exe" : "lldb-dap";
 
@@ -81,8 +83,9 @@ async function getDAPExecutable(
   configuration: vscode.DebugConfiguration,
 ): Promise<string> {
   // Check if the executable was provided in the launch configuration.
-  const launchConfigPath = configuration["debugAdapterExecutable"];
+  let launchConfigPath = configuration["debugAdapterExecutable"];
   if (typeof launchConfigPath === "string" && launchConfigPath.length !== 0) {
+    launchConfigPath = substituteEnv(launchConfigPath);
     if (!(await isExecutable(launchConfigPath))) {
       throw new ErrorWithNotification(
         `Debug adapter path "${launchConfigPath}" is not a valid file. The path comes from your launch configuration.`,
@@ -94,8 +97,9 @@ async function getDAPExecutable(
 
   // Check if the executable was provided in the extension's configuration.
   const config = vscode.workspace.getConfiguration("lldb-dap", workspaceFolder);
-  const configPath = config.get<string>("executable-path");
+  let configPath = config.get<string>("executable-path");
   if (configPath && configPath.length !== 0) {
+    configPath = substituteEnv(configPath);
     if (!(await isExecutable(configPath))) {
       throw new ErrorWithNotification(
         `Debug adapter path "${configPath}" is not a valid file. The path comes from your settings.`,
