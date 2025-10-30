@@ -2126,6 +2126,17 @@ void ValueObject::GetExpressionPath(Stream &s,
     return;
   }
 
+  // wide registers may have a synthetic type associated with, and will
+  // dynamic dispatch to the `ValueObject::GetExpressionPath` instead of
+  // `ValueObjectRegister`.
+  if (const ValueType obj_value_type = GetValueType();
+      IsSynthetic() && (obj_value_type == eValueTypeRegister ||
+                        obj_value_type == eValueTypeRegisterSet)) {
+
+    const ValueObjectSP raw_value = GetNonSyntheticValue();
+    return raw_value->GetExpressionPath(s, epformat);
+  }
+
   const bool is_deref_of_parent = IsDereferenceOfParent();
 
   if (is_deref_of_parent &&
