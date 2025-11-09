@@ -60,6 +60,11 @@ export class LLDBDapServer implements vscode.Disposable {
       return this.serverInfo;
     }
 
+    const configuration_env = options?.env
+    if (options) {
+      options.env = { ...process.env, ...configuration_env }
+    }
+
     this.serverInfo = new Promise((resolve, reject) => {
       const process = child_process.spawn(dapPath, dapArgs, options);
       process.on("error", (error) => {
@@ -88,7 +93,7 @@ export class LLDBDapServer implements vscode.Disposable {
         }
       });
       this.serverProcess = process;
-      this.serverSpawnInfo = this.getSpawnInfo(dapPath, dapArgs, options?.env);
+      this.serverSpawnInfo = this.getSpawnInfo(dapPath, dapArgs, configuration_env);
       this.serverFileChanged = false;
       this.serverFileWatcher = chokidarWatch(dapPath);
       this.serverFileWatcher
