@@ -583,7 +583,8 @@ static llvm::Error serveConnection(
     std::thread client([=, &log]() {
       llvm::set_thread_name(client_name + ".runloop");
 
-      Log client_log = log.WithPrefix("(" + client_name + ")");
+      const std::string client_prefix = llvm::formatv("({})", client_name);
+      Log client_log = log.WithPrefix(client_prefix);
       DAP_LOG(client_log, "client connected");
 
       MainLoop loop;
@@ -592,6 +593,8 @@ static llvm::Error serveConnection(
               client_name, transport, loop);
 
       if (auto Err = dap.ConfigureIO()) {
+        DAP_LOG(log, "{} error: Failed to configure stdout redirect: {}",
+                client_prefix, llvm::toStringWithoutConsuming(Err));
         llvm::logAllUnhandledErrors(std::move(Err), llvm::errs(),
                                     "Failed to configure stdout redirect: ");
         return;
@@ -601,6 +604,8 @@ static llvm::Error serveConnection(
       DAPSessionManager::GetInstance().RegisterSession(&loop, &dap);
 
       if (auto Err = dap.Loop()) {
+        DAP_LOG(log, "{} error: {}", client_prefix,
+                llvm::toStringWithoutConsuming(Err));
         llvm::logAllUnhandledErrors(std::move(Err), llvm::errs(),
                                     "DAP session (" + client_name +
                                         ") error: ");
@@ -853,6 +858,8 @@ int main(int argc, char *argv[]) {
     if (auto Err = serveConnection(protocol, name, log, default_repl_mode,
                                    pre_init_commands, no_lldbinit,
                                    connection_timeout_seconds)) {
+      DAP_LOG(log, "Connection Failed: {}",
+              llvm::toStringWithoutConsuming(Err));
       llvm::logAllUnhandledErrors(std::move(Err), llvm::errs(),
                                   "Connection failed: ");
       return EXIT_FAILURE;
