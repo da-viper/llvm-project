@@ -10,6 +10,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/Program.h"
 
 using namespace lldb_dap;
 
@@ -61,10 +62,23 @@ VSCodeLauncher::GetLaunchURL(const std::vector<llvm::StringRef> &args) const {
 
 llvm::Error VSCodeLauncher::Launch(const std::vector<llvm::StringRef> &args) {
   const std::string launch_url = GetLaunchURL(args);
-  const std::string command =
-      llvm::formatv("code --open-url {0}", launch_url).str();
 
-  std::system(command.c_str());
+  llvm::ErrorOr<std::string> code = llvm::sys::findProgramByName("code");
+  if (!code)
+    return llvm::createStringError(code.getError(),
+                                   "could not find 'code' on PATH");
+
+  const llvm::StringRef argv[] = {*code, "--open-url", launch_url};
+  std::string error_msg;
+  bool execution_failed = false;
+  int rc = llvm::sys::ExecuteAndWait(*code, argv, /*Env=*/std::nullopt,
+                                     /*Redirects=*/{}, /*SecondsToWait=*/0,
+                                     /*MemoryLimit=*/0, &error_msg,
+                                     &execution_failed);
+  if (execution_failed || rc < 0)
+    return llvm::createStringError(llvm::inconvertibleErrorCode(),
+                                   "failed to launch 'code': %s",
+                                   error_msg.c_str());
   return llvm::Error::success();
 }
 
