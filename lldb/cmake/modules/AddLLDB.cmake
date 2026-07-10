@@ -479,7 +479,7 @@ endfunction()
 # Mach-O uses two-level namespaces and PE/COFF does not export symbols by
 # default.
 function(lldb_prevent_liblldb_symbol_interposition name)
-  if(UNIX AND NOT APPLE)
+  if(UNIX AND NOT APPLE AND NOT LLVM_USE_SANITIZER)
     target_link_options(${name} PRIVATE "LINKER:--exclude-libs,ALL")
   endif()
 endfunction()
