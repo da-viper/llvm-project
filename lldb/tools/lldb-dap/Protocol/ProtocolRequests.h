@@ -1317,6 +1317,14 @@ using UnknownArguments = EmptyArguments;
 /// Response to unknowns request.
 using UnknownResponseBody = VoidResponse;
 
+/// Custom
+struct ConnectRemoteFDArguments {
+  String protocol;
+  String connection_url;
+};
+
+using ConnectRemoteFDResponseBody = VoidResponse;
+
 } // namespace lldb_dap::protocol
 
 #endif

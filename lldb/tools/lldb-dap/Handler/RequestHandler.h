@@ -667,6 +667,16 @@ public:
   llvm::Error Run(const protocol::UnknownArguments &args) const override;
 };
 
+class ConnectFDRemoteRequestHandler final
+    : public RequestHandler<protocol::ConnectRemoteFDArguments,
+                            protocol::ConnectRemoteFDResponseBody> {
+public:
+  using RequestHandler::RequestHandler;
+  static llvm::StringLiteral GetCommand() { return "__lldb_connectRemoteFD"; }
+  llvm::Error
+  Run(const protocol::ConnectRemoteFDArguments &args) const override;
+};
+
 } // namespace lldb_dap
 
 #endif

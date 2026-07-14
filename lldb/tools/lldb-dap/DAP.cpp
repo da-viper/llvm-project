@@ -1543,6 +1543,7 @@ void DAP::RegisterRequests() {
   RegisterRequest<CompileUnitsRequestHandler>();
   RegisterRequest<ModulesRequestHandler>();
   RegisterRequest<ModuleSymbolsRequestHandler>();
+  RegisterRequest<ConnectFDRemoteRequestHandler>();
 
   // Testing requests
   RegisterRequest<TestGetTargetBreakpointsRequestHandler>();
