@@ -1320,8 +1320,10 @@ using UnknownResponseBody = VoidResponse;
 /// Custom
 struct ConnectRemoteFDArguments {
   String protocol;
-  String connection_url;
+  String socketPath;
 };
+bool fromJSON(const llvm::json::Value &, ConnectRemoteFDArguments &,
+              llvm::json::Path);
 
 using ConnectRemoteFDResponseBody = VoidResponse;
 

@@ -13,10 +13,10 @@
 #include "lldb/API/SBListener.h"
 #include "lldb/lldb-types.h"
 #include "llvm/ADT/ScopeExit.h"
-#include "llvm/Support/Errc.h"
 #include "llvm/Support/Error.h"
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <unistd.h>
 
 using namespace lldb_dap::protocol;
 
@@ -40,7 +40,7 @@ static llvm::Expected<lldb::file_t> recv_fd(int sock) {
 #else
   const int flags = 0;
 #endif
-  if (recvmsg(sock, &msg, flags) < 0)
+  if (::recvmsg(sock, &msg, flags) < 0)
     return llvm::errorCodeToError(llvm::errnoAsErrorCode());
 
   struct cmsghdr *cmsg = NULL;
@@ -49,7 +49,7 @@ static llvm::Expected<lldb::file_t> recv_fd(int sock) {
       continue;
 
     int fd{};
-    memcpy(&fd, CMSG_DATA(cmsg), sizeof(int));
+    ::memcpy(&fd, CMSG_DATA(cmsg), sizeof(int));
     return fd;
   }
 
@@ -60,70 +60,54 @@ static llvm::Expected<lldb::file_t> recv_fd(int sock) {
 static llvm::Expected<lldb::file_t> GetFDFromSocket(const String &socket_path) {
   const char *sock_path = socket_path.c_str();
 
-  const int listener = ::socket(AF_UNIX, SOCK_STREAM, 0);
-  if (listener < 0) {
+  const int sock_fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+  if (sock_fd < 0) {
     return llvm::errorCodeToError(llvm::errnoAsErrorCode());
   }
 
   struct sockaddr_un addr{};
   addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, sock_path, sizeof(addr.sun_path) - 1);
+  ::strncpy(addr.sun_path, sock_path, sizeof(addr.sun_path) - 1);
 
-  // A leftover socket file from a previous run makes bind() fail with
-  // EADDRINUSE.
-  unlink(sock_path);
-  if (bind(listener, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-    return llvm::errorCodeToError(llvm::errnoAsErrorCode());
-  }
-  if (listen(listener, 1) < 0) {
-    return llvm::errorCodeToError(llvm::errnoAsErrorCode());
-  }
-  //   printf("[receiver] listening on %s\n", sock_path);
-
-  const int conn = accept(listener, NULL, NULL);
-  if (conn < 0) {
+  if (::connect(sock_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
     return llvm::errorCodeToError(llvm::errnoAsErrorCode());
   }
 
-  llvm::scope_exit cleanup([&] {
-    close(conn);
-    close(listener);
-    unlink(sock_path);
-  });
-  return recv_fd(conn);
+  llvm::scope_exit cleanup([&] { ::close(sock_fd); });
+
+  return recv_fd(sock_fd);
 }
 
 namespace lldb_dap {
 llvm::Error
 ConnectFDRemoteRequestHandler::Run(const ConnectRemoteFDArguments &args) const {
-  //   lldb::file_t received_fd = -1;
-  //   if (received_fd < 0) {
-  //     return llvm::make_error<DAPError>(
-  //         "no handle received from the socket connection");
-  //   }
-
-#ifdef __APPLE__ // SO_NOSIGPIPE is not available on linux. TODO: add FreeBSD
-  int opt = 1;
-  ::setsockopt(received_fd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
-#endif
-
-  //   const auto &connect_url = args.connection_url;
-  llvm::Expected<lldb::file_t> exp_fd = GetFDFromSocket(args.connection_url);
+  // Get the file descriptor.
+  llvm::Expected<lldb::file_t> exp_fd = GetFDFromSocket(args.socketPath);
   if (llvm::Error error = exp_fd.takeError()) {
     return error;
   }
 
-  const std::string connect_url = llvm::formatv("fd://{}", *exp_fd);
-  lldb::SBListener listener = dap.debugger.GetListener();
-  lldb::SBError error;
-  auto process = dap.target.ConnectRemote(listener, connect_url.c_str(),
-                                          args.protocol.c_str(), error);
+  const auto dbg_server_fd = *exp_fd;
+  std::string file_data = llvm::formatv("connected to: fd://{}\n", dbg_server_fd);
+  {
+    // write the data to dap stdout.
+    char buf[4096];
+    ssize_t n;
+    while ((n = read(dbg_server_fd, buf, sizeof(buf))) > 0) {
+      dap.SendOutput(OutputType::Console, llvm::StringRef(buf, n));
+      file_data.append(buf, n);
+    }
+  }
+  const std::string connect_url = llvm::formatv("fd://{}", dbg_server_fd);
+  // lldb::SBListener listener = dap.debugger.GetListener();
+  // lldb::SBError error;
+  // auto process = dap.target.ConnectRemote(listener, connect_url.c_str(),
+  //                                         args.protocol.c_str(), error);
+  return llvm::make_error<DAPError>(std::move(file_data));
 
-  return ToError(error);
-  //   if (error.Fail()) {
-  //     ::close(received_fd);
-  //     return ToError(error);
-  //   }
-  //   return llvm::Error::success();
+  // if (error.Success()) {
+  //   return llvm::make_error<DAPError>(std::move(file_data));
+  // }
+  // return ToError(error);
 }
 } // namespace lldb_dap

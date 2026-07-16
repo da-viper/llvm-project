@@ -833,4 +833,11 @@ llvm::json::Value toJSON(const StackTraceResponseBody &Body) {
   return result;
 }
 
+bool fromJSON(const llvm::json::Value &Params, ConnectRemoteFDArguments &Args,
+              llvm::json::Path Path) {
+  json::ObjectMapper O(Params, Path);
+  return O && O.map("protocol", Args.protocol) &&
+         O.map("socketPath", Args.socketPath);
+}
+
 } // namespace lldb_dap::protocol
