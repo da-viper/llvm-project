@@ -22,7 +22,9 @@ using namespace lldb_dap::protocol;
 
 static llvm::Expected<lldb::file_t> recv_fd(int sock) {
   char dummy{};
-  struct iovec iov = {.iov_base = &dummy, .iov_len = 1};
+  struct iovec iov{};
+  iov.iov_base = &dummy;
+  iov.iov_len = 1;
 
   union {
     char buf[CMSG_SPACE(sizeof(int))];
@@ -88,7 +90,8 @@ ConnectFDRemoteRequestHandler::Run(const ConnectRemoteFDArguments &args) const {
   }
 
   const auto dbg_server_fd = *exp_fd;
-  std::string file_data = llvm::formatv("connected to: fd://{}\n", dbg_server_fd);
+  std::string file_data =
+      llvm::formatv("connected to: fd://{}\n", dbg_server_fd);
   {
     // write the data to dap stdout.
     char buf[4096];

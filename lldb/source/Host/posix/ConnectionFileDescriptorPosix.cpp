@@ -681,9 +681,9 @@ ConnectionFileDescriptor::ConnectFD(llvm::StringRef s,
       tcp_socket = std::make_unique<TCPSocket>(fd, /*should_close=*/false);
       // Try and get a socket option from this file descriptor to see if
       // this is a socket and set m_is_socket accordingly.
-      int resuse;
+      int socket_type;
       bool is_socket =
-          !!tcp_socket->GetOption(SOL_SOCKET, SO_REUSEADDR, resuse);
+          tcp_socket->GetOption(SOL_SOCKET, SO_TYPE, socket_type) == 0;
       if (is_socket)
         m_io_sp = std::move(tcp_socket);
       else

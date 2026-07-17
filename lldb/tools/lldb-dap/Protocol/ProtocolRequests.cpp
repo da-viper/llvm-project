@@ -358,13 +358,13 @@ bool fromJSON(const json::Value &Params, AttachRequestArguments &ARA,
   if (!success)
     return false;
   // Validate that we have a well formed attach request.
-  if (ARA.attachCommands.empty() && ARA.coreFile.empty() &&
-      ARA.configuration.program.empty() && ARA.pid == LLDB_INVALID_PROCESS_ID &&
-      ARA.gdbRemotePort == LLDB_DAP_INVALID_PORT && !ARA.session.has_value()) {
-    P.report("expected one of 'pid', 'program', 'attachCommands', "
-             "'coreFile', 'gdb-remote-port', or 'session' to be specified");
-    return false;
-  }
+  // if (ARA.attachCommands.empty() && ARA.coreFile.empty() &&
+  //     ARA.configuration.program.empty() && ARA.pid == LLDB_INVALID_PROCESS_ID &&
+  //     ARA.gdbRemotePort == LLDB_DAP_INVALID_PORT && !ARA.session.has_value()) {
+  //   P.report("expected one of 'pid', 'program', 'attachCommands', "
+  //            "'coreFile', 'gdb-remote-port', or 'session' to be specified");
+  //   return false;
+  // }
   // Check if we have mutually exclusive arguments.
   if ((ARA.pid != LLDB_INVALID_PROCESS_ID) &&
       (ARA.gdbRemotePort != LLDB_DAP_INVALID_PORT)) {
