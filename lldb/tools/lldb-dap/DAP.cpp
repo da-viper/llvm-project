@@ -1081,10 +1081,16 @@ lldb::SBError DAP::WaitForProcessToStop(std::chrono::seconds seconds) {
     error.SetErrorString("invalid process");
     return error;
   }
+
+  const auto state = process.GetState();
+  const auto *const state_str = lldb::SBDebugger::StateAsCString(state);
+  SendOutput(OutputType::Console,
+             llvm::formatv(" process state: {}\n", state_str).str());
   auto timeout_time =
-      std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+      std::chrono::steady_clock::now() + std::chrono::seconds(100);
   while (std::chrono::steady_clock::now() < timeout_time) {
     const auto state = process.GetState();
+    const auto *const state_str = lldb::SBDebugger::StateAsCString(state);
     switch (state) {
     case lldb::eStateUnloaded:
     case lldb::eStateAttaching:
@@ -1105,7 +1111,9 @@ lldb::SBError DAP::WaitForProcessToStop(std::chrono::seconds seconds) {
     case lldb::eStateStopped:
       return lldb::SBError(); // Success!
     }
-    std::this_thread::sleep_for(std::chrono::microseconds(250));
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    SendOutput(OutputType::Console,
+               llvm::formatv(" process state: {}\n", state_str).str());
   }
   error.SetErrorString(
       llvm::formatv("process failed to stop within {0}", seconds)

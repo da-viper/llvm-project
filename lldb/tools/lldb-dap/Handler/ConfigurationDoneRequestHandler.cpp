@@ -35,11 +35,12 @@ ConfigurationDoneRequestHandler::Run(const ConfigurationDoneArguments &) const {
   lldb::SBProcess process = dap.target.GetProcess();
   if (!process.IsValid() ||
       !lldb::SBDebugger::StateIsStoppedState(process.GetState()))
-    return make_error<DAPError>(
+    return make_error<DAPError>(llvm::formatv(
         "Expected process to be stopped.\r\n\r\nProcess is in an unexpected "
         "state and may have missed an initial configuration. Please check that "
         "any debugger command scripts are not resuming the process during the "
-        "launch sequence.");
+        "launch sequence state: {}.",
+        process.GetState()));
 
   // Waiting until 'configurationDone' to send target based capabilities in case
   // the launch or attach scripts adjust the target. The initial dummy target

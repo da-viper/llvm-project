@@ -286,6 +286,10 @@ Error AttachRequestHandler::Run(const AttachRequestArguments &args) const {
       dap.SendOutput(OutputType::Console,
                      llvm::formatv("fd type : {}", fd_type).str());
 
+      dap.SendOutput(
+          OutputType::Console,
+          llvm::formatv("debug server fd type : {}", dbg_server_fd).str());
+
       int opt = 1;
       if (::setsockopt(dbg_server_fd, SOL_SOCKET, SO_NOSIGPIPE, &opt,
                        sizeof(opt)) == -1) {
@@ -296,6 +300,31 @@ Error AttachRequestHandler::Run(const AttachRequestArguments &args) const {
       lldb::SBListener listener = dap.debugger.GetListener();
       auto process = dap.target.ConnectRemote(listener, connect_url.c_str(),
                                               "gdb-remote", error);
+
+      const auto id = process.GetProcessID();
+      dap.SendOutput(OutputType::Console,
+                     llvm::formatv(" process id {}", id).str());
+
+      if (args.pid != LLDB_INVALID_PROCESS_ID) {
+        dap.SendOutput(
+            OutputType::Console,
+            llvm::formatv("\nattaching to pid process id {}\n", args.pid)
+                .str());
+        process.RemoteAttachToProcessWithID(args.pid, error);
+        dap.SendOutput(
+            OutputType::Console,
+            llvm::formatv("Attaching Error: {}\n", error.GetCString()).str());
+      }
+      // lldb::SBAttachInfo attach_info;
+      // if (args.pid != LLDB_INVALID_PROCESS_ID)
+      //   attach_info.SetProcessID(args.pid);
+      // else if (!dap.configuration.program.empty())
+      //   attach_info.SetExecutable(dap.configuration.program.data());
+      // attach_info.SetWaitForLaunch(args.waitFor, /*async=*/false);
+      // dap.target.Attach(attach_info, error);
+      // dap.SendOutput(OutputType::Console,
+      //                llvm::formatv("Attach {}", error.GetCString()).str());
+      // error = process->Attach(m_options.attach_info);
 
     } else if (!args.coreFile.empty()) {
       dap.target.LoadCore(args.coreFile.data(), error);
@@ -309,6 +338,7 @@ Error AttachRequestHandler::Run(const AttachRequestArguments &args) const {
       connect_url += std::to_string(args.gdbRemotePort);
       dap.target.ConnectRemote(listener, connect_url.c_str(), "gdb-remote",
                                error);
+
     } else if (!session) {
       // Attach by pid or process name.
       lldb::SBAttachInfo attach_info;
@@ -328,6 +358,12 @@ Error AttachRequestHandler::Run(const AttachRequestArguments &args) const {
       return ToError(error);
   }
 
+  const auto state_str =
+      lldb::SBDebugger::StateAsCString(target.GetProcess().GetState());
+  const auto id = target.GetProcess().GetProcessID();
+  dap.SendOutput(
+      OutputType::Console,
+      llvm::formatv(" process state: {}, id {}", state_str, id).str());
   // Make sure the process is attached and stopped.
   error = dap.WaitForProcessToStop(args.configuration.timeout);
   if (error.Fail())
