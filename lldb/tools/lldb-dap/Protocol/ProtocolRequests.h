@@ -357,6 +357,8 @@ struct AttachRequestArguments {
   /// used `localhost`.
   String gdbRemoteHostname = "localhost";
 
+  String fdConnectionURI;
+
   /// Path to the core file to debug.
   String coreFile;
 
@@ -1316,16 +1318,6 @@ llvm::json::Value toJSON(const StackTraceResponseBody &);
 using UnknownArguments = EmptyArguments;
 /// Response to unknowns request.
 using UnknownResponseBody = VoidResponse;
-
-/// Custom
-struct ConnectRemoteFDArguments {
-  String protocol;
-  String socketPath;
-};
-bool fromJSON(const llvm::json::Value &, ConnectRemoteFDArguments &,
-              llvm::json::Path);
-
-using ConnectRemoteFDResponseBody = VoidResponse;
 
 } // namespace lldb_dap::protocol
 

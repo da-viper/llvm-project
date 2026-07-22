@@ -23,10 +23,12 @@
 
 using namespace llvm;
 using namespace lldb_dap::protocol;
+#ifndef _WIN32
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
+
 static llvm::Expected<lldb::file_t> recv_fd(int sock) {
   char dummy{};
   struct iovec iov{};
@@ -59,8 +61,8 @@ static llvm::Expected<lldb::file_t> recv_fd(int sock) {
     return llvm::createStringError("Ancillary data was truncated!");
   }
 
-  struct cmsghdr *cmsg = NULL;
-  for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; CMSG_NXTHDR(&msg, cmsg)) {
+  struct cmsghdr *cmsg = nullptr;
+  for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != nullptr; CMSG_NXTHDR(&msg, cmsg)) {
     if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS)
       continue;
 
@@ -68,11 +70,11 @@ static llvm::Expected<lldb::file_t> recv_fd(int sock) {
     ::memcpy(&fd, CMSG_DATA(cmsg), sizeof(int));
 
     // Confirm it's a socket
-    int optval;
+    int optval{};
     socklen_t optlen = sizeof(optval);
     if (getsockopt(fd, SOL_SOCKET, SO_TYPE, &optval, &optlen) < 0) {
-      return llvm::createStringErrorV("received fd {} is not a valid socket",
-                                      fd);
+      return llvm::createStringErrorV(
+          "the received file descriptor {} is not a socket", fd);
       return -1;
     }
 
@@ -80,13 +82,12 @@ static llvm::Expected<lldb::file_t> recv_fd(int sock) {
     int err = 0;
     socklen_t len = sizeof(err);
     getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len);
-    if (err != 0) {
-      return llvm::createStringErrorV("Socket has error: {}", strerror(err));
-    }
+    if (err != 0)
+      return llvm::createStringErrorV("socket has error: {}", strerror(err));
+
     return fd;
   }
 
-  // TODO: fprintf(stderr, "no file descriptor in received message\n");
   return llvm::createStringError("failed to get the file descriptor");
 }
 
@@ -100,7 +101,7 @@ static llvm::Expected<lldb::file_t> GetFDFromSocket(const String &socket_path) {
 
   struct sockaddr_un addr{};
   addr.sun_family = AF_UNIX;
-  ::strncpy(addr.sun_path, sock_path, sizeof(addr.sun_path) - 1);
+  ::strncpy((char *)addr.sun_path, sock_path, sizeof(addr.sun_path) - 1);
 
   if (::connect(sock_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
     return llvm::errorCodeToError(llvm::errnoAsErrorCode());
@@ -110,93 +111,7 @@ static llvm::Expected<lldb::file_t> GetFDFromSocket(const String &socket_path) {
 
   return recv_fd(sock_fd);
 }
-
-#include <netinet/in.h>
-std::string getFdType(int fd) {
-  struct stat sb;
-
-  if (fstat(fd, &sb) == -1) {
-    return "error";
-  }
-  switch (sb.st_mode & S_IFMT) {
-  case S_IFREG:
-    return "regular file";
-  case S_IFDIR:
-    return "directory";
-  case S_IFLNK:
-    return "symbolic link";
-  case S_IFCHR:
-    return "character device";
-  case S_IFBLK:
-    return "block device";
-  case S_IFIFO:
-    return "FIFO/pipe";
-  case S_IFSOCK:
-    return "socket";
-  default:
-    return "unknown";
-  }
-}
-
-std::string diagnoseFd(int fd) {
-  std::string result;
-
-  // Check if fd is valid
-  struct stat sb;
-  if (fstat(fd, &sb) == -1) {
-    return "fstat failed: " + std::string(strerror(errno));
-  }
-
-  // Check fd type
-  if (!S_ISSOCK(sb.st_mode)) {
-    return "fd is not a socket (type: " + getFdType(fd) + ")";
-  }
-
-  // Check socket type
-  int type = 0;
-  socklen_t len = sizeof(type);
-  if (getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &len) == -1) {
-    result += "SO_TYPE failed: " + std::string(strerror(errno)) + " | ";
-  } else {
-    switch (type) {
-    case SOCK_STREAM:
-      result += "SOCK_STREAM | ";
-      break;
-    case SOCK_DGRAM:
-      result += "SOCK_DGRAM | ";
-      break;
-    case SOCK_RAW:
-      result += "SOCK_RAW | ";
-      break;
-    default:
-      result += "type=" + std::to_string(type) + " | ";
-    }
-  }
-
-  // Check socket domain
-  struct sockaddr_storage addr;
-  socklen_t addrlen = sizeof(addr);
-  if (getsockname(fd, (struct sockaddr *)&addr, &addrlen) == -1) {
-    result += "getsockname failed: " + std::string(strerror(errno));
-  } else {
-    switch (addr.ss_family) {
-    case AF_INET:
-      result += "AF_INET";
-      break;
-    case AF_INET6:
-      result += "AF_INET6";
-      break;
-    case AF_UNIX:
-      result += "AF_UNIX";
-      break;
-    default:
-      result += "family=" + std::to_string(addr.ss_family);
-    }
-  }
-
-  return result;
-}
-
+#endif
 namespace lldb_dap {
 
 /// The `attach` request is sent from the client to the debug adapter to attach
@@ -272,60 +187,28 @@ Error AttachRequestHandler::Run(const AttachRequestArguments &args) const {
     ScopeSyncMode scope_sync_mode(dap.debugger);
 
     if (!args.attachCommands.empty()) {
-      // treat the first line the socket to connect to as I don't want to to all
-      // the setup
-      const auto &socket_path = args.attachCommands[0];
-      llvm::Expected<lldb::file_t> exp_fd = GetFDFromSocket(socket_path);
-      if (llvm::Error error = exp_fd.takeError()) {
-        return error;
+      // Run the attach commands, after which we expect the debugger's selected
+      // target to contain a valid and stopped process. Otherwise inform the
+      // user that their command failed or the debugger is in an unexpected
+      // state.
+      if (llvm::Error err = dap.RunAttachCommands(args.attachCommands))
+        return err;
+
+      dap.SetTarget(dap.debugger.GetSelectedTarget());
+
+      // Validate the attachCommand results.
+      if (!dap.target.GetProcess().IsValid())
+        return make_error<DAPError>(
+            "attachCommands failed to attach to a process");
+
+      // If the attach commands produced a non-live session (e.g. a core file
+      // loaded via `target create --core`), report the session's stop reason
+      // instead of trying to resume it, matching the behavior of the
+      // `coreFile` attach key.
+      if (!dap.target.GetProcess().IsLiveDebugSession()) {
+        dap.stop_at_entry = true;
+        dap.is_live_session = false;
       }
-
-      const auto dbg_server_fd = *exp_fd;
-      const auto fd_type = getFdType(dbg_server_fd);
-      DAP_LOG(dap.log, "fd type : {}\n", fd_type);
-      dap.SendOutput(OutputType::Console,
-                     llvm::formatv("fd type : {}", fd_type).str());
-
-      dap.SendOutput(
-          OutputType::Console,
-          llvm::formatv("debug server fd type : {}", dbg_server_fd).str());
-
-      int opt = 1;
-      if (::setsockopt(dbg_server_fd, SOL_SOCKET, SO_NOSIGPIPE, &opt,
-                       sizeof(opt)) == -1) {
-        auto result = std::string("FD: ") + diagnoseFd(dbg_server_fd);
-        DAP_LOG(dap.log, "fd type : {}\n", result);
-      }
-      const std::string connect_url = llvm::formatv("fd://{}", dbg_server_fd);
-      lldb::SBListener listener = dap.debugger.GetListener();
-      auto process = dap.target.ConnectRemote(listener, connect_url.c_str(),
-                                              "gdb-remote", error);
-
-      const auto id = process.GetProcessID();
-      dap.SendOutput(OutputType::Console,
-                     llvm::formatv(" process id {}", id).str());
-
-      if (args.pid != LLDB_INVALID_PROCESS_ID) {
-        dap.SendOutput(
-            OutputType::Console,
-            llvm::formatv("\nattaching to pid process id {}\n", args.pid)
-                .str());
-        process.RemoteAttachToProcessWithID(args.pid, error);
-        dap.SendOutput(
-            OutputType::Console,
-            llvm::formatv("Attaching Error: {}\n", error.GetCString()).str());
-      }
-      // lldb::SBAttachInfo attach_info;
-      // if (args.pid != LLDB_INVALID_PROCESS_ID)
-      //   attach_info.SetProcessID(args.pid);
-      // else if (!dap.configuration.program.empty())
-      //   attach_info.SetExecutable(dap.configuration.program.data());
-      // attach_info.SetWaitForLaunch(args.waitFor, /*async=*/false);
-      // dap.target.Attach(attach_info, error);
-      // dap.SendOutput(OutputType::Console,
-      //                llvm::formatv("Attach {}", error.GetCString()).str());
-      // error = process->Attach(m_options.attach_info);
-
     } else if (!args.coreFile.empty()) {
       dap.target.LoadCore(args.coreFile.data(), error);
     } else if (args.gdbRemotePort != LLDB_DAP_INVALID_PORT) {
@@ -352,6 +235,40 @@ Error AttachRequestHandler::Run(const AttachRequestArguments &args) const {
       // we update to the real target.
       if (process.IsValid())
         dap.SetTarget(process.GetTarget());
+    }
+    if (!args.fdConnectionURI.empty()) {
+      const auto &socket_path = args.fdConnectionURI;
+      llvm::Expected<lldb::file_t> exp_fd = GetFDFromSocket(socket_path);
+      if (llvm::Error error = exp_fd.takeError()) {
+        return error;
+      }
+
+      const auto server_fd = *exp_fd;
+      // TODO: Is this this needed as the internal write diables no sigpipe.
+#ifdef __APPLE__
+      const int flags = SO_NOSIGPIPE;
+#else
+      const int flags = 0;
+#endif // __APPLE__
+      int opt = 1;
+      ::setsockopt(server_fd, SOL_SOCKET, flags, &opt, sizeof(opt));
+
+      const std::string connect_url = llvm::formatv("fd://{}", server_fd);
+      lldb::SBListener listener = dap.debugger.GetListener();
+      auto process = dap.target.ConnectRemote(listener, connect_url.c_str(),
+                                              "gdb-remote", error);
+      const auto id = process.GetProcessID();
+      dap.SendOutput(OutputType::Console,
+                     llvm::formatv(" process id {}\n", id).str());
+
+      if (args.pid != LLDB_INVALID_PROCESS_ID) {
+        dap.SendOutput(
+            OutputType::Console,
+            llvm::formatv("attaching to pid process id {}\n", args.pid).str());
+        process.RemoteAttachToProcessWithID(args.pid, error);
+        dap.SendOutput(OutputType::Console,
+                       llvm::formatv("error: {}\n", error.GetCString()).str());
+      }
     }
 
     if (error.Fail())

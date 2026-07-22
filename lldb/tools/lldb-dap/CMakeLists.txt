@@ -36,7 +36,6 @@ add_lldb_library(lldbDAP OBJECT
   Handler/CompileUnitsRequestHandler.cpp
   Handler/CompletionsRequestHandler.cpp
   Handler/ConfigurationDoneRequestHandler.cpp
-  Handler/ConnectRemoteFDRequestHandler.cpp 
   Handler/ContinueRequestHandler.cpp
   Handler/DataBreakpointInfoRequestHandler.cpp
   Handler/DisassembleRequestHandler.cpp
