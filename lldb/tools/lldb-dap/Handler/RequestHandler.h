@@ -191,9 +191,12 @@ class DelayedResponseRequestHandler : public BaseRequestHandler {
     if (llvm::Error err = arguments.takeError())
       return SendError(std::move(err), response);
 
-    BuildErrorResponse(Run(*arguments), response);
+    if (llvm::Error err = Run(*arguments))
+      return SendError(std::move(err), response);
 
-    dap.on_configuration_done = [this, response]() mutable { Send(response); };
+    response.success = true;
+    dap.on_configuration_done =
+        [this, response = std::move(response)]() mutable { Send(response); };
 
     // The 'configurationDone' request is not sent until after 'initialized'
     // triggers the breakpoints being sent and 'configurationDone' is the last
