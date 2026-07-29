@@ -171,13 +171,16 @@ bool SBProcess::RemoteAttachToProcessWithID(lldb::pid_t pid,
   if (process_sp) {
     std::lock_guard<std::recursive_mutex> guard(
         process_sp->GetTarget().GetAPIMutex());
-    if (process_sp->GetState() == eStateConnected) {
+    if (const auto process_state = process_sp->GetState();
+        process_state == eStateConnected) {
       ProcessAttachInfo attach_info;
       attach_info.SetProcessID(pid);
       error.SetError(process_sp->Attach(attach_info));
     } else {
-      error = Status::FromErrorString(
-          "must be in eStateConnected to call RemoteAttachToProcessWithID");
+      error = Status::FromErrorStringWithFormatv(
+          "must be in eStateConnected to call RemoteAttachToProcessWithID. "
+          "current state: {}",
+          StateAsCString(process_state));
     }
   } else {
     error = Status::FromErrorString("unable to attach pid");

@@ -214,6 +214,9 @@ public:
   static llvm::StringLiteral GetCommand() { return "attach"; }
   protocol::AttachResponse
   Run(const protocol::AttachRequestArguments &args) const override;
+
+private:
+  mutable lldb::SBProcess m_connection_process;
 };
 
 class BreakpointLocationsRequestHandler

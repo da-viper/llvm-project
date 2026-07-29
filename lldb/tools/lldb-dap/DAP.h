@@ -328,7 +328,7 @@ struct DAP final : public DAPTransport::MessageHandler {
   ///
   /// \return
   ///     An SBTarget object.
-  lldb::SBTarget CreateTarget(lldb::SBError &error);
+  lldb::SBTarget CreateTarget(lldb::SBError &error, bool add_dependent_modules = true);
 
   /// Set given target object as a current target for lldb-dap and start
   /// listening for its breakpoint events.

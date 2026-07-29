@@ -162,7 +162,7 @@ Error AttachRequestHandler::Run(const AttachRequestArguments &args) const {
               .c_str());
     }
   } else {
-    target = dap.CreateTarget(error);
+    target = dap.CreateTarget(error, args.fdConnectionURI.empty());
   }
 
   if (target.IsValid())
@@ -253,29 +253,45 @@ Error AttachRequestHandler::Run(const AttachRequestArguments &args) const {
       int opt = 1;
       ::setsockopt(server_fd, SOL_SOCKET, flags, &opt, sizeof(opt));
 
-      const std::string connect_url = llvm::formatv("fd://{}", server_fd);
       lldb::SBListener listener = dap.debugger.GetListener();
-      auto process = dap.target.ConnectRemote(listener, connect_url.c_str(),
-                                              "gdb-remote", error);
-      const auto id = process.GetProcessID();
-      dap.SendOutput(OutputType::Console,
-                     llvm::formatv(" process id {}\n", id).str());
+      const std::string connect_url = llvm::formatv("fd://{}", server_fd);
+      lldb::SBProcess connect_process = target.ConnectRemote(listener, connect_url.c_str(),
+                                                  "gdb-remote", error);
+      m_connection_process = connect_process;
+      if (error.Fail())
+        return ToError(error);
+      // NOTE: there is a weird setup flow.
+      // the Proccess::Attach is not exposed through the SB-API so we use
+      // SBTarget::Attach as it will use the underlying process for that target
+      // to perform the attach.
 
-      if (args.pid != LLDB_INVALID_PROCESS_ID) {
-        dap.SendOutput(
-            OutputType::Console,
-            llvm::formatv("attaching to pid process id {}\n", args.pid).str());
-        process.RemoteAttachToProcessWithID(args.pid, error);
-        dap.SendOutput(OutputType::Console,
-                       llvm::formatv("error: {}\n", error.GetCString()).str());
-      }
+      if (args.pid != LLDB_INVALID_PROCESS_ID)
+        connect_process.RemoteAttachToProcessWithID(args.pid, error);
+      else
+        return llvm::createStringError("a process id is required to connect ");
+      // lldb::SBAttachInfo attach_info;
+      // attach_info.SetProcessID(args.pid);
+      // // TODO: for some reason we are not able to attach by the name of a
+      // process.
+      // // because technically debugserver fd (in this case is actually a
+      // SBPlatform not a process).
+      // // and the process list is not exposed at this layer so for now only
+      // support attaching using a
+      // // pid.
+      // // else if (!dap.configuration.program.empty())
+      // //   attach_info.SetExecutable(dap.configuration.program.c_str());
+      // // attach_info.SetWaitForLaunch(args.waitFor, /*async=*/false);
+
+      // auto debug_process = target.Attach(attach_info, error);
+      // if (debug_process.IsValid())
+      //   dap.SetTarget(debug_process.GetTarget());
     }
 
     if (error.Fail())
       return ToError(error);
   }
 
-  const auto state_str =
+  const char *const state_str =
       lldb::SBDebugger::StateAsCString(target.GetProcess().GetState());
   const auto id = target.GetProcess().GetProcessID();
   dap.SendOutput(

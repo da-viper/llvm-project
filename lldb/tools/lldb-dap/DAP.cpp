@@ -766,7 +766,7 @@ void DAP::RunTerminateCommands() {
                   configuration.terminateCommands);
 }
 
-lldb::SBTarget DAP::CreateTarget(lldb::SBError &error) {
+lldb::SBTarget DAP::CreateTarget(lldb::SBError &error, bool add_dependent_modules) {
   // the given program as an argument. Executable file can be a source of target
   // architecture and platform, if they differ from the host. Setting exe path
   // in launch info is useless because Target.Launch() will not change
