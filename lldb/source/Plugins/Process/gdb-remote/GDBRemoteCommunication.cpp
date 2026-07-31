@@ -254,7 +254,7 @@ GDBRemoteCommunication::WaitForPacketNoLock(StringExtractorGDBRemote &packet,
 
   bool timed_out = false;
   bool disconnected = false;
-  while (IsConnected() && !timed_out) {
+  while (IsConnected() && !timed_out && !disconnected) {
     lldb::ConnectionStatus status = eConnectionStatusNoConnection;
     size_t bytes_read = Read(buffer, sizeof(buffer), timeout, status, &error);
 

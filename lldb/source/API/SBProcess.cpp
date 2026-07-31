@@ -163,6 +163,30 @@ bool SBProcess::RemoteLaunch(char const **argv, char const **envp,
   return error.Success();
 }
 
+bool SBProcess::RemoteAttachToProcess(lldb::SBAttachInfo &info,
+                                      lldb::SBError &error) {
+  LLDB_INSTRUMENT_VA(this, info, error);
+
+  ProcessSP process_sp(GetSP());
+  if (!process_sp) {
+    error = Status::FromErrorString("invalid process");
+    return false;
+  }
+
+  const lldb::StateType process_state = process_sp->GetState();
+  if (process_state != eStateConnected) {
+    error = Status::FromErrorStringWithFormatv(
+        "must be in eStateConnected to call RemoteAttachToProcess. "
+        "current state: {}",
+        StateAsCString(process_state));
+    return false;
+  }
+
+  ProcessAttachInfo &attach_info = info.ref();
+  error.SetError(process_sp->Attach(attach_info));
+  return error->Success();
+}
+
 bool SBProcess::RemoteAttachToProcessWithID(lldb::pid_t pid,
                                             lldb::SBError &error) {
   LLDB_INSTRUMENT_VA(this, pid, error);
@@ -892,7 +916,6 @@ size_t SBProcess::ReadMemory(addr_t addr, void *dst, size_t dst_len,
   size_t bytes_read = 0;
   ProcessSP process_sp(GetSP());
 
-
   if (process_sp) {
     Process::StopLocker stop_locker;
     if (stop_locker.TryLock(&process_sp->GetRunLock())) {
@@ -1095,7 +1118,7 @@ uint32_t SBProcess::LoadImage(const lldb::SBFileSpec &sb_local_image_spec,
     Process::StopLocker stop_locker;
     if (stop_locker.TryLock(&process_sp->GetRunLock())) {
       std::lock_guard<std::recursive_mutex> guard(
-        process_sp->GetTarget().GetAPIMutex());
+          process_sp->GetTarget().GetAPIMutex());
       PlatformSP platform_sp = process_sp->GetTarget().GetPlatform();
       return platform_sp->LoadImage(process_sp.get(), *sb_local_image_spec,
                                     *sb_remote_image_spec, sb_error.ref());
@@ -1119,7 +1142,7 @@ uint32_t SBProcess::LoadImageUsingPaths(const lldb::SBFileSpec &image_spec,
     Process::StopLocker stop_locker;
     if (stop_locker.TryLock(&process_sp->GetRunLock())) {
       std::lock_guard<std::recursive_mutex> guard(
-        process_sp->GetTarget().GetAPIMutex());
+          process_sp->GetTarget().GetAPIMutex());
       PlatformSP platform_sp = process_sp->GetTarget().GetPlatform();
       size_t num_paths = paths.GetSize();
       std::vector<std::string> paths_vec;
@@ -1248,8 +1271,7 @@ lldb::SBError SBProcess::SaveCore(const char *file_name) {
   return SaveCore(options);
 }
 
-lldb::SBError SBProcess::SaveCore(const char *file_name,
-                                  const char *flavor,
+lldb::SBError SBProcess::SaveCore(const char *file_name, const char *flavor,
                                   SaveCoreStyle core_style) {
   LLDB_INSTRUMENT_VA(this, file_name, flavor, core_style);
   SBSaveCoreOptions options;

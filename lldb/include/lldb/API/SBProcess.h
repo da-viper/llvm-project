@@ -9,6 +9,7 @@
 #ifndef LLDB_API_SBPROCESS_H
 #define LLDB_API_SBPROCESS_H
 
+#include "lldb/API/SBAttachInfo.h"
 #include "lldb/API/SBDefines.h"
 #include "lldb/API/SBError.h"
 #include "lldb/API/SBProcessInfo.h"
@@ -84,6 +85,7 @@ public:
   /// process is not in eStateConnected. They are intended for use
   /// when connecting to an externally managed debugserver instance.
   bool RemoteAttachToProcessWithID(lldb::pid_t pid, lldb::SBError &error);
+  bool RemoteAttachToProcess(lldb::SBAttachInfo &info , lldb::SBError &error);
 
   bool RemoteLaunch(char const **argv, char const **envp,
                     const char *stdin_path, const char *stdout_path,

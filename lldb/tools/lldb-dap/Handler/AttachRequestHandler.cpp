@@ -15,6 +15,7 @@
 #include "lldb/API/SBAttachInfo.h"
 #include "lldb/API/SBListener.h"
 #include "lldb/lldb-defines.h"
+#include "lldb/lldb-enumerations.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorExtras.h"
@@ -255,34 +256,34 @@ Error AttachRequestHandler::Run(const AttachRequestArguments &args) const {
 
       lldb::SBListener listener = dap.debugger.GetListener();
       const std::string connect_url = llvm::formatv("fd://{}", server_fd);
-      lldb::SBProcess connect_process = target.ConnectRemote(listener, connect_url.c_str(),
-                                                  "gdb-remote", error);
+      lldb::SBProcess connect_process = target.ConnectRemote(
+          listener, connect_url.c_str(), "gdb-remote", error);
       m_connection_process = connect_process;
       if (error.Fail())
         return ToError(error);
+
+      if (const auto process_state = connect_process.GetState();
+          process_state != lldb::eStateConnected) {
+        return llvm::createStringErrorV(
+            "expected process to be in a connected state. current state: {}",
+            lldb::SBDebugger::StateAsCString(process_state));
+      }
+
+      // if (args.pid != LLDB_INVALID_PROCESS_ID)
+        // connect_process.RemoteAttachToProcessWithID(args.pid, error);
       // NOTE: there is a weird setup flow.
       // the Proccess::Attach is not exposed through the SB-API so we use
-      // SBTarget::Attach as it will use the underlying process for that target
-      // to perform the attach.
-
+      // SBTarget::Attach as it will use the underlying process for that
+      // target to perform the attach.
+      lldb::SBAttachInfo attach_info;
       if (args.pid != LLDB_INVALID_PROCESS_ID)
-        connect_process.RemoteAttachToProcessWithID(args.pid, error);
-      else
-        return llvm::createStringError("a process id is required to connect ");
-      // lldb::SBAttachInfo attach_info;
-      // attach_info.SetProcessID(args.pid);
-      // // TODO: for some reason we are not able to attach by the name of a
-      // process.
-      // // because technically debugserver fd (in this case is actually a
-      // SBPlatform not a process).
-      // // and the process list is not exposed at this layer so for now only
-      // support attaching using a
-      // // pid.
-      // // else if (!dap.configuration.program.empty())
-      // //   attach_info.SetExecutable(dap.configuration.program.c_str());
+        attach_info.SetProcessID(args.pid);
+      // if (!dap.configuration.program.empty())
+      //   attach_info.SetExecutable(dap.configuration.program.c_str());
       // // attach_info.SetWaitForLaunch(args.waitFor, /*async=*/false);
 
-      // auto debug_process = target.Attach(attach_info, error);
+      if (!connect_process.RemoteAttachToProcess(attach_info, error))
+        return ToError(error);
       // if (debug_process.IsValid())
       //   dap.SetTarget(debug_process.GetTarget());
     }
