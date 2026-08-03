@@ -258,19 +258,29 @@ Error AttachRequestHandler::Run(const AttachRequestArguments &args) const {
       const std::string connect_url = llvm::formatv("fd://{}", server_fd);
       lldb::SBProcess connect_process = target.ConnectRemote(
           listener, connect_url.c_str(), "gdb-remote", error);
-      m_connection_process = connect_process;
       if (error.Fail())
         return ToError(error);
 
-      if (const auto process_state = connect_process.GetState();
-          process_state != lldb::eStateConnected) {
-        return llvm::createStringErrorV(
-            "expected process to be in a connected state. current state: {}",
-            lldb::SBDebugger::StateAsCString(process_state));
-      }
+      m_connection_process = connect_process;
+      auto log_process = [&](lldb::SBProcess proc, std::string prefix = "") {
+        auto *state_str = lldb::SBDebugger::StateAsCString(proc.GetState());
+        auto id = proc.GetProcessID();
+        dap.SendOutput(OutputType::Console,
+                       llvm::formatv("{} process state: {}, proc id: {}",
+                                     prefix, state_str, id)
+                           .str());
+      };
+      log_process(connect_process, "After connecting");
+      // error = dap.WaitForProcessToStop(args.configuration.timeout);
+      // if (const auto process_state = connect_process.GetState();
+      //     process_state != lldb::eStateConnected) {
+      //   return llvm::createStringErrorV(
+      //       "expected process to be in a connected state. current state:
+      //       '{}'", lldb::SBDebugger::StateAsCString(process_state));
+      // }
 
       // if (args.pid != LLDB_INVALID_PROCESS_ID)
-        // connect_process.RemoteAttachToProcessWithID(args.pid, error);
+      // connect_process.RemoteAttachToProcessWithID(args.pid, error);
       // NOTE: there is a weird setup flow.
       // the Proccess::Attach is not exposed through the SB-API so we use
       // SBTarget::Attach as it will use the underlying process for that
@@ -278,8 +288,8 @@ Error AttachRequestHandler::Run(const AttachRequestArguments &args) const {
       lldb::SBAttachInfo attach_info;
       if (args.pid != LLDB_INVALID_PROCESS_ID)
         attach_info.SetProcessID(args.pid);
-      // if (!dap.configuration.program.empty())
-      //   attach_info.SetExecutable(dap.configuration.program.c_str());
+      else if (!dap.configuration.program.empty())
+        attach_info.SetExecutable(dap.configuration.program.c_str());
       // // attach_info.SetWaitForLaunch(args.waitFor, /*async=*/false);
 
       if (!connect_process.RemoteAttachToProcess(attach_info, error))

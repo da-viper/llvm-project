@@ -346,11 +346,11 @@ size_t ConnectionFileDescriptor::Write(const void *src, size_t src_len,
                                        ConnectionStatus &status,
                                        Status *error_ptr) {
   Log *log = GetLog(LLDBLog::Connection);
-  LLDB_LOGF(log,
-            "%p ConnectionFileDescriptor::Write (src = %p, src_len = %" PRIu64
-            ")",
-            static_cast<void *>(this), static_cast<const void *>(src),
-            static_cast<uint64_t>(src_len));
+  // LLDB_LOGF(log,
+  //           "%p ConnectionFileDescriptor::Write (src = %p, src_len = %" PRIu64
+  //           ")",
+  //           static_cast<void *>(this), static_cast<const void *>(src),
+  //           static_cast<uint64_t>(src_len));
 
   if (!IsConnected()) {
     if (error_ptr)

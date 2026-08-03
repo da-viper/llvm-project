@@ -13,6 +13,7 @@
 #include <cinttypes>
 
 #include "lldb/lldb-defines.h"
+#include "lldb/lldb-enumerations.h"
 #include "lldb/lldb-types.h"
 
 #include "lldb/Core/AddressRangeListImpl.h"
@@ -174,10 +175,10 @@ bool SBProcess::RemoteAttachToProcess(lldb::SBAttachInfo &info,
   }
 
   const lldb::StateType process_state = process_sp->GetState();
-  if (process_state != eStateConnected) {
+  if (process_state != eStateConnected && process_state != eStateStopped) {
     error = Status::FromErrorStringWithFormatv(
         "must be in eStateConnected to call RemoteAttachToProcess. "
-        "current state: {}",
+        "current state: '{}'",
         StateAsCString(process_state));
     return false;
   }
