@@ -20,6 +20,7 @@
 #include "lldb/lldb-types.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
 
 #include <algorithm>
 #include <chrono>
@@ -30,9 +31,11 @@
 // Define NOMINMAX to avoid macros that conflict with std::min and std::max
 #define NOMINMAX
 #include <winsock2.h>
-#else
-#include <sys/time.h>
+#elif defined(__APPLE__)
 #include <sys/select.h>
+#include <sys/time.h>
+#else
+#include <poll.h>
 #endif
 
 
@@ -82,6 +85,7 @@ bool SelectHelper::FDIsSetError(lldb::socket_t fd) const {
     return false;
 }
 
+#if defined(__APPLE__) || defined(_WIN32)
 static void updateMaxFd(std::optional<lldb::socket_t> &vold,
                         lldb::socket_t vnew) {
   if (!vold)
@@ -89,8 +93,79 @@ static void updateMaxFd(std::optional<lldb::socket_t> &vold,
   else
     vold = std::max(*vold, vnew);
 }
+#endif
 
 lldb_private::Status SelectHelper::Select() {
+#if !defined(__APPLE__) && !defined(_WIN32)
+  // Linux / other Unix: use poll() so we're not bounded by FD_SETSIZE.
+  // The Apple path stays on select() because history: switching to poll()
+  // or kqueue on macOS panicked the kernel (see #define above). Windows
+  // stays on select() because FD_SETSIZE is a count limit there, not an
+  // fd-value limit, and WSAPoll has documented quirks around exceptfds.
+  lldb_private::Status error;
+
+  if (m_fd_map.empty())
+    return lldb_private::Status::FromErrorString("no valid file descriptors");
+
+  llvm::SmallVector<struct pollfd, 16> pfds;
+  pfds.reserve(m_fd_map.size());
+  for (auto &pair : m_fd_map) {
+    pair.second.PrepareForSelect();
+    struct pollfd pfd = {};
+    pfd.fd = pair.first;
+    if (pair.second.read_set)
+      pfd.events |= POLLIN;
+    if (pair.second.write_set)
+      pfd.events |= POLLOUT;
+    // Mirrors select's exceptfds — used almost exclusively for OOB sockets.
+    if (pair.second.error_set)
+      pfd.events |= POLLPRI;
+    pfds.push_back(pfd);
+  }
+
+  while (true) {
+    int timeout_ms = -1; // infinite
+    if (m_end_time) {
+      using namespace std::chrono;
+      const auto remaining =
+          duration_cast<milliseconds>(*m_end_time - steady_clock::now());
+      timeout_ms =
+          remaining.count() > 0 ? static_cast<int>(remaining.count()) : 0;
+    }
+
+    const int n = ::poll(pfds.data(), pfds.size(), timeout_ms);
+    if (n < 0) {
+      error = lldb_private::Status::FromErrno();
+      if (error.GetError() == EINTR) {
+        error.Clear();
+        continue; // retry with a fresh, adjusted timeout at the top
+      }
+      return error;
+    }
+    if (n == 0)
+      return lldb_private::Status(ETIMEDOUT, lldb::eErrorTypePOSIX, "timed out");
+
+    // Fold revents back into FDInfo, matching select's semantics:
+    //   read  ← POLLIN  | POLLHUP   (a hung-up peer is readable in select)
+    //   write ← POLLOUT | POLLHUP
+    //   error ← POLLERR | POLLNVAL | POLLPRI
+    for (const auto &pfd : pfds) {
+      auto it = m_fd_map.find(pfd.fd);
+      if (it == m_fd_map.end())
+        continue;
+      auto &info = it->second;
+      if (info.read_set && (pfd.revents & (POLLIN | POLLHUP)))
+        info.read_is_set = true;
+      if (info.write_set && (pfd.revents & (POLLOUT | POLLHUP)))
+        info.write_is_set = true;
+      if (info.error_set &&
+          (pfd.revents & (POLLERR | POLLNVAL | POLLPRI)))
+        info.error_is_set = true;
+    }
+    break;
+  }
+  return error;
+#else
   lldb_private::Status error;
 #ifdef _WIN32
   // On windows FD_SETSIZE limits the number of file descriptors, not their
@@ -108,14 +183,6 @@ lldb_private::Status SelectHelper::Select() {
   for (auto &pair : m_fd_map) {
     pair.second.PrepareForSelect();
     const lldb::socket_t fd = pair.first;
-#if !defined(__APPLE__) && !defined(_WIN32)
-    lldbassert(fd < static_cast<int>(FD_SETSIZE));
-    if (fd >= static_cast<int>(FD_SETSIZE)) {
-      error = lldb_private::Status::FromErrorStringWithFormat(
-          "%i is too large for select()", fd);
-      return error;
-    }
-#endif
     if (pair.second.read_set)
       updateMaxFd(max_read_fd, fd);
     if (pair.second.write_set)
@@ -251,4 +318,5 @@ lldb_private::Status SelectHelper::Select() {
     }
   }
   return error;
+#endif
 }
