@@ -127,8 +127,9 @@ lldb_private::Status SelectHelper::Select() {
     int timeout_ms = -1; // infinite
     if (m_end_time) {
       using namespace std::chrono;
-      const auto remaining =
-          duration_cast<milliseconds>(*m_end_time - steady_clock::now());
+      // Round up: duration_cast truncates, which would let poll() return
+      // slightly before the caller's requested deadline.
+      const auto remaining = ceil<milliseconds>(*m_end_time - steady_clock::now());
       timeout_ms =
           remaining.count() > 0 ? static_cast<int>(remaining.count()) : 0;
     }
