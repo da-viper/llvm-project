@@ -21,9 +21,12 @@ namespace lldb_dap {
 Watchpoint::Watchpoint(DAP &d, const protocol::DataBreakpoint &breakpoint)
     : BreakpointBase(d, breakpoint.condition, breakpoint.hitCondition) {
   llvm::StringRef dataId = breakpoint.dataId;
-  auto [addr_str, size_str] = dataId.split('/');
+  auto [addr_str, rest] = dataId.split('/');
+  auto [size_str, var_ref_str] = rest.split('/');
   llvm::to_integer(addr_str, m_addr, 16);
   llvm::to_integer(size_str, m_size);
+  uint32_t ref = var_ref_t::k_invalid_var_ref;
+  llvm::to_integer(var_ref_str, ref);
   m_options.SetWatchpointTypeRead(breakpoint.accessType !=
                                   protocol::eDataBreakpointAccessTypeWrite);
   if (breakpoint.accessType != protocol::eDataBreakpointAccessTypeRead)
@@ -53,8 +56,15 @@ protocol::Breakpoint Watchpoint::ToProtocolBreakpoint() {
 }
 
 void Watchpoint::SetWatchpoint() {
-  m_wp = m_dap.target.WatchpointCreateByAddress(m_addr, m_size, m_options,
-                                                m_error);
+  if (m_var_ref.Kind() != protocol::eReferenceKindInvalid) {
+    lldb::SBValue wp_value = m_dap.reference_storage.GetVariable(m_var_ref);
+    wp_value.Watch(true, m_options.GetWatchpointTypeRead(),
+                   m_options.GetWatchpointTypeWrite() !=
+                       lldb::eWatchpointWriteTypeDisabled);
+  } else {
+    m_wp = m_dap.target.WatchpointCreateByAddress(m_addr, m_size, m_options,
+                                                  m_error);
+  }
   if (!m_condition.empty())
     SetCondition();
   if (!m_hit_condition.empty())

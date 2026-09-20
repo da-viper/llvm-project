@@ -1478,6 +1478,8 @@ lldb::SBWatchpoint SBValue::Watch(bool resolve_location, bool read, bool write,
     error.SetError(std::move(rc));
 
     if (watchpoint_sp) {
+      watchpoint_sp->SetWatchSpec(llvm::StringRef(GetName()).str());
+      watchpoint_sp->SetWatchVariable(true);
       sb_watchpoint.SetSP(watchpoint_sp);
       Declaration decl;
       if (value_sp->GetDeclaration(decl)) {
@@ -1486,6 +1488,8 @@ lldb::SBWatchpoint SBValue::Watch(bool resolve_location, bool read, bool write,
           // True to show fullpath for declaration file.
           decl.DumpStopContext(&ss, true);
           watchpoint_sp->SetDeclInfo(std::string(ss.GetString()));
+          if (auto frame = GetFrame().GetFrameSP(); frame.get())
+            watchpoint_sp->SetupVariableWatchpointDisabler(frame);
         }
       }
     }
