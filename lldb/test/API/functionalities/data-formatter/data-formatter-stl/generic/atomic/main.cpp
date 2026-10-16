@@ -48,8 +48,11 @@ int main() {
   // use the generic std::atomic layout.
 #ifdef __GLIBCXX__
   // Other standard libraries cannot instantiate std::atomic<_Complex float>.
+  _Complex float complex_value;
+  __real__ complex_value = 1.5f;
+  __imag__ complex_value = 2.5f;
   std::atomic<_Complex float> atomic_complex_float;
-  atomic_complex_float.store(__builtin_complex(1.5f, 2.5f));
+  atomic_complex_float.store(complex_value);
 #endif // __GLIBCXX__
   std::atomic<vector4float> atomic_vector_float{vector4float{1, 2, 3, 4}};
 

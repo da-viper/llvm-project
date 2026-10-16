@@ -408,7 +408,8 @@ bool lldb_private::formatters::LibStdcppSmartPointerSummaryProvider(
   ValueObjectSP pi_sp = GetReferenceCountPointer(*valobj_sp, is_atomic_child);
   if (!pi_sp)
     return false;
-  bool success = false;
+
+  bool success;
   uint64_t pi_addr = pi_sp->GetValueAsUnsigned(0, &success);
   // Empty control field. We're done.
   if (!success || pi_addr == 0)
@@ -416,7 +417,7 @@ bool lldb_private::formatters::LibStdcppSmartPointerSummaryProvider(
 
   int64_t shared_count = 0;
   if (auto count_sp = pi_sp->GetChildMemberWithName("_M_use_count")) {
-    bool success = false;
+    bool success;
     shared_count = count_sp->GetValueAsSigned(0, &success);
     if (!success)
       return false;
@@ -427,7 +428,7 @@ bool lldb_private::formatters::LibStdcppSmartPointerSummaryProvider(
   // _M_weak_count is the number of weak references + (_M_use_count != 0).
   if (auto weak_count_sp = pi_sp->GetChildMemberWithName("_M_weak_count")) {
     bool success;
-    uint64_t count = weak_count_sp->GetValueAsUnsigned(0, &success);
+    int64_t count = weak_count_sp->GetValueAsUnsigned(0, &success);
     if (!success)
       return false;
 

@@ -74,7 +74,7 @@ public:
 
     const uint32_t float_mask = lldb::eTypeIsFloat | lldb::eTypeIsBuiltIn;
     if ((first_type.GetTypeInfo() & float_mask) == float_mask) {
-      // added float types specialization in c++17
+      // added float types specialization in c++20
       if (const auto child = backend.GetChildMemberWithName("_M_fp"))
         return child;
 
