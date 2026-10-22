@@ -857,6 +857,25 @@ void DAP::Received(const protocol::Event &event) {
   // no-op, no supported events from the client to the server as of DAP v1.68.
 }
 
+void DAP::InterruptActiveRequest(std::optional<protocol::Id> seq) {
+  std::lock_guard<std::mutex> guard(m_active_request_mutex);
+  if (!m_active_request || (seq && *seq != m_active_request->seq))
+    return;
+
+  // Request it once, `HandleObject()` clears a single request.
+  if (debugger.InterruptRequested())
+    return;
+
+  DAP_LOG(log, "interrupting inflight request (command={0} seq={1})",
+          m_active_request->command, m_active_request->seq);
+  debugger.RequestInterrupt();
+
+  // A waitFor attach doesn't check the debugger's interrupt. This doesn't take
+  // the target's API lock, which the attach holds.
+  if (m_active_request->command == "attach")
+    target.GetProcess().SendAsyncInterrupt();
+}
+
 void DAP::Received(const protocol::Request &request) {
   const std::optional<CancelArguments> cancel_args =
       getArgumentsIfRequest<CancelArguments>(request, "cancel");
@@ -869,13 +888,15 @@ void DAP::Received(const protocol::Request &request) {
 
     // If a cancel is requested for the active request, make a best
     // effort attempt to interrupt.
-    std::lock_guard<std::mutex> guard(m_active_request_mutex);
-    if (m_active_request && cancel_args->requestId == m_active_request->seq) {
-      DAP_LOG(log, "interrupting inflight request (command={0} seq={1})",
-              m_active_request->command, m_active_request->seq);
-      debugger.RequestInterrupt();
-    }
+    if (cancel_args->requestId)
+      InterruptActiveRequest(cancel_args->requestId);
   }
+
+  // A 'disconnect' ends the session, so interrupt the active request instead of
+  // waiting for it. The requests queued after it are cancelled by
+  // `EndSession()`.
+  if (request.command == "disconnect")
+    InterruptActiveRequest();
 
   std::lock_guard<std::mutex> guard(m_queue_mutex);
   DAP_LOG(log, "queued (command={0} seq={1})", request.command, request.seq);

@@ -79,6 +79,34 @@ class TestDAP_server(DAPTestCaseBase):
         self.assertEqual(adapter.process.wait(timeout=self.DEFAULT_TIMEOUT), 0)
 
     @skipIfWindows
+    def test_server_interrupt_waitFor_attach(self):
+        """
+        Test shutting down the server while a debug session is waiting to
+        attach to a process that never launches.
+        """
+        self.build()
+        adapter = self.start_server(connection="listen://localhost:0")
+        session = self.create_session(adapter, disconnect_automatically=False)
+        init_response = session.initialize_sequence(session.initialize_args)
+        program = self.getBuildArtifact("a.out")
+        pending = session.send_request(AttachArgs(program=program, waitFor=True))
+        session.wait_for_event(
+            ProgressStartEvent,
+            until=lambda e: "Waiting to attach" in e.body.title,
+            after=init_response,
+            timeout_msg="Waiting for attach progress event.",
+        )
+
+        # Interrupt the server which should disconnect all clients.
+        adapter.process.send_signal(signal.SIGINT)
+
+        attach_resp = pending.error("expected the attach to be cancelled")
+        self.assertEqual(attach_resp.message, "cancelled")
+
+        # The server shuts down cleanly once its clients are disconnected.
+        self.assertEqual(adapter.process.wait(timeout=self.DEFAULT_TIMEOUT), 0)
+
+    @skipIfWindows
     def test_connection_timeout_at_server_start(self):
         """
         Test launching lldb-dap in server mode with connection timeout and

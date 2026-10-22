@@ -193,6 +193,13 @@ class DelayedResponseRequestHandler : public BaseRequestHandler {
 
     BuildErrorResponse(Run(*arguments), response);
 
+    // The response is sent after the interrupt is cleared, so `DAP::Send()`
+    // can't mark it cancelled.
+    if (!response.success && dap.debugger.InterruptRequested()) {
+      response.message = protocol::eResponseMessageCancelled;
+      response.body = std::nullopt;
+    }
+
     dap.on_configuration_done = [this, response]() mutable { Send(response); };
 
     // The 'configurationDone' request is not sent until after 'initialized'

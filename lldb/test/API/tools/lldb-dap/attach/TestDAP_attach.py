@@ -8,9 +8,10 @@ from pathlib import Path
 
 from lldbsuite.test import lldbutil
 from lldbsuite.test.decorators import *
-from lldbsuite.test.tools.lldb_dap import DAPTestCaseBase
+from lldbsuite.test.tools.lldb_dap import DAPTestCaseBase, DAPTestSession
 from lldbsuite.test.tools.lldb_dap.types import (
     AttachArgs,
+    CancelArgs,
     ProcessEvent,
     ProgressStartEvent,
 )
@@ -118,6 +119,52 @@ class TestDAP_attach(DAPTestCaseBase):
 
         self.assertEqual(process_event.body.systemProcessId, proc.pid)
         self.verify_pid(proc)
+
+    def waitFor_attach_request(self, session: DAPTestSession):
+        """Sends a waitFor attach and returns it once it is waiting."""
+        program = self.build_for_attach()
+        init_response = session.initialize_sequence(session.initialize_args)
+        pending = session.send_request(AttachArgs(program=program, waitFor=True))
+        session.wait_for_event(
+            ProgressStartEvent,
+            until=lambda e: "Waiting to attach" in e.body.title,
+            after=init_response,
+            timeout_msg="Waiting for attach progress event.",
+        )
+        return pending
+
+    @expectedFailureWindows
+    @skipIfWindowsAndLLDBServer
+    def test_waitFor_cancel(self):
+        """
+        Tests that a cancel request ends an attach that is still waiting for
+        the process to launch.
+        """
+        session = self.create_session(disconnect_automatically=False)
+        pending = self.waitFor_attach_request(session)
+
+        session.send_request(CancelArgs(requestId=pending.seq)).result()
+        # `initialized` is only sent once the attach request stopped waiting.
+        session.ensure_initialized()
+
+        # The attach response is sent when the session ends.
+        session.disconnect()
+        attach_resp = pending.error("expected the attach to be cancelled")
+        self.assertEqual(attach_resp.message, "cancelled")
+
+    @expectedFailureWindows
+    @skipIfWindowsAndLLDBServer
+    def test_waitFor_disconnect(self):
+        """
+        Tests that a disconnect request alone ends an attach that is still
+        waiting for the process to launch.
+        """
+        session = self.create_session(disconnect_automatically=False)
+        pending = self.waitFor_attach_request(session)
+
+        session.disconnect()
+        attach_resp = pending.error("expected the attach to be cancelled")
+        self.assertEqual(attach_resp.message, "cancelled")
 
     def test_attach_with_missing_session_debugger(self):
         """

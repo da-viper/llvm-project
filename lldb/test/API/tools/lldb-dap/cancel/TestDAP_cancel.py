@@ -110,12 +110,13 @@ class TestDAP_cancel(DAPTestCaseBase):
         session.verify_stopped_on_entry(after=process_event)
 
         # Block the request handling thread, so both requests are queued.
-        blocking_handle = self.async_blocking_request(session, count=1)
+        blocking_handle = self.async_blocking_request(session, count=10)
         disconnect_handle = session.send_request(DisconnectArgs(terminateDebuggee=True))
         threads_handle = session.send_request(ThreadsArgs())
 
-        blocking_resp = blocking_handle.result()
-        self.assertEqual(blocking_resp.success, True)
+        # The 'disconnect' interrupts the active request.
+        blocking_resp = blocking_handle.error()
+        self.assertEqual(blocking_resp.message, "cancelled")
 
         threads_resp = threads_handle.error()
         self.assertEqual(threads_resp.request_seq, threads_handle.seq)

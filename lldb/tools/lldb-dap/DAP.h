@@ -407,6 +407,10 @@ struct DAP final : public DAPTransport::MessageHandler {
 
   InstructionBreakpoint *GetInstructionBPFromStopReason(lldb::SBThread &thread);
 
+  /// Interrupts the active request, or only the active request with \a seq.
+  /// Safe to call from any thread.
+  void InterruptActiveRequest(std::optional<protocol::Id> seq = std::nullopt);
+
   /// Checks if the request is cancelled.
   bool IsCancelled(const protocol::Request &);
 
@@ -527,7 +531,7 @@ private:
   llvm::SmallSet<int64_t, 4> m_cancelled_requests;
 
   std::mutex m_active_request_mutex;
-  const protocol::Request *m_active_request;
+  const protocol::Request *m_active_request = nullptr;
 
   llvm::StringMap<SourceBreakpointMap> m_source_breakpoints;
   llvm::DenseMap<src_ref_t, SourceBreakpointMap> m_source_assembly_breakpoints;

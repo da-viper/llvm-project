@@ -65,6 +65,8 @@ void DAPSessionManager::DisconnectAllSessions() {
   m_client_failed = false;
   for (auto [loop, dap] : m_active_sessions) {
     if (dap) {
+      // `Disconnect()` waits for the active request, so interrupt it.
+      dap->InterruptActiveRequest();
       if (llvm::Error error = dap->Disconnect()) {
         m_client_failed = true;
         llvm::WithColor::error() << "DAP client disconnected failed: "
