@@ -325,6 +325,34 @@ class TestDAP_completions(DAPTestCaseBase):
             frame_id=top_frame_id,
         )
 
+    def test_variable_completions_in_other_frame(self):
+        """Completes the variables of the requested frame, without selecting it."""
+        session, stop_event = self.setup_debuggee()
+        fun_frame, main_frame = session.thread_context_from(stop_event).frames(
+            levels=2
+        )
+        session.evaluate(
+            "`lldb-dap repl-mode variable", context="repl", frameId=fun_frame.id
+        )
+
+        # Stopped in `fun`, completing in `main`'s frame.
+        main_vars = {
+            variable_var1_completion.clone(length=3),
+            variable_var2_completion.clone(length=3),
+        }
+        self.verify_completions(
+            "var",
+            expected=main_vars,
+            not_expected=variable_var_completion,
+            frame_id=main_frame.id,
+        )
+
+        # Without a frame, completes in the selected frame, which is still
+        # `fun`'s.
+        self.verify_completions(
+            "var", expected=variable_var_completion, not_expected=main_vars
+        )
+
     def test_auto_completions(self):
         """Tests completion requests in "repl-mode=auto"."""
         session, stop_event = self.setup_debuggee()

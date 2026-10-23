@@ -11,6 +11,7 @@
 #include "Protocol/ProtocolRequests.h"
 #include "Protocol/ProtocolTypes.h"
 #include "RequestHandler.h"
+#include "lldb/API/SBExecutionContext.h"
 #include "lldb/API/SBStringList.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ConvertUTF.h"
@@ -103,13 +104,12 @@ CompletionsRequestHandler::Run(const CompletionsArguments &args) const {
 
   size_t cursor_pos = *cursor_pos_opt;
 
-  // If we have a frame, try to set the context for variable completions.
+  // Complete in the requested frame, for variable completions, without
+  // selecting it.
   lldb::SBFrame frame = dap.GetLLDBFrame(args.frameId);
-  if (frame.IsValid()) {
-    lldb::SBThread frame_thread = frame.GetThread();
-    frame_thread.GetProcess().SetSelectedThread(frame_thread);
-    frame_thread.SetSelectedFrame(frame.GetFrameID());
-  }
+  lldb::SBExecutionContext exe_ctx = frame.IsValid()
+                                         ? lldb::SBExecutionContext(frame)
+                                         : lldb::SBExecutionContext();
 
   const StringRef escape_prefix = dap.configuration.commandEscapePrefix;
   const bool had_escape_prefix = StringRef(text).starts_with(escape_prefix);
@@ -143,7 +143,7 @@ CompletionsRequestHandler::Run(const CompletionsArguments &args) const {
     lldb::SBStringList matches;
     lldb::SBStringList descriptions;
     if (!interpreter.HandleCompletionWithDescriptions(
-            line.c_str(), cursor, 0, 50, matches, descriptions))
+            line.c_str(), cursor, 50, exe_ctx, matches, descriptions))
       continue;
 
     // The first element is the common substring after the cursor position for
