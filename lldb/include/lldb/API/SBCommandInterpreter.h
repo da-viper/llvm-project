@@ -247,6 +247,17 @@ public:
                                        lldb::SBStringList &matches,
                                        lldb::SBStringList &descriptions);
 
+  /// Same as HandleCompletionWithDescriptions, but completes in \a exe_ctx
+  /// instead of the selected target, thread and frame, e.g. to complete the
+  /// variables of a frame. It doesn't change the selection. With an empty
+  /// \a exe_ctx, it uses the selected ones.
+  int HandleCompletionWithDescriptions(const char *current_line,
+                                       uint32_t cursor_pos,
+                                       int max_return_elements,
+                                       lldb::SBExecutionContext &exe_ctx,
+                                       lldb::SBStringList &matches,
+                                       lldb::SBStringList &descriptions);
+
   /// Returns whether an interrupt flag was raised either by the SBDebugger -
   /// when the function is not running on the RunCommandInterpreter thread, or
   /// by SBCommandInterpreter::InterruptCommand if it is.  If your code is doing
