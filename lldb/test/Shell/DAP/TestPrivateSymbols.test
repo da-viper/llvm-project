@@ -1,0 +1,8 @@
+# lldb-dap links its own copies of lldbHost and lldbUtility. It must not also
+# use some of liblldb's private symbols: lldb-dap's code would then share part
+# of liblldb's state, such as its log channels. See LLDB_DAP_LINK_LIBS in
+# tools/lldb-dap/tool/CMakeLists.txt.
+
+# UNSUPPORTED: system-windows
+
+# RUN: llvm-nm --undefined-only --demangle lldb-dap | not grep 'lldb_private::'

@@ -2,7 +2,11 @@ set(LLVM_TARGET_DEFINITIONS Options.td)
 tablegen(LLVM Options.inc -gen-opt-parser-defs)
 add_public_tablegen_target(LLDBDAPOptionsTableGen)
 
-set(LLDB_DAP_LINK_LIBS lldbDAP liblldb lldbHost)
+# Link lldb-dap's own copies of lldbHost and lldbUtility before liblldb. If
+# liblldb came first, the few private symbols it exports (for the script
+# interpreter plugins) would bind there, and lldb-dap's copy of the code would
+# share some of liblldb's state, e.g. its log channels.
+set(LLDB_DAP_LINK_LIBS lldbDAP lldbHost lldbUtility liblldb)
 
 add_lldb_tool(lldb-dap
   lldb-dap.cpp
