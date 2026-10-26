@@ -65,3 +65,27 @@ class TestDAP_repl_mode_detection(DAPTestCaseBase):
             top_frame_id,
         )
         self.assertEvaluate("platform", platform_help_needle, top_frame_id)
+
+    def test_resolved_commands(self):
+        """Abbreviated commands and format suffixes are detected as commands,
+        like the command line resolves them."""
+        program = self.getBuildArtifact("a.out")
+        session = self.build_and_create_session()
+        self._session = session
+
+        source = "main.cpp"
+        with session.configure(LaunchArgs(program)) as ctx:
+            session.resolve_source_breakpoints(
+                source, [line_number(source, "// breakpoint 2")]
+            )
+
+        stop_event = session.verify_stopped_on_breakpoint(after=ctx.process_event)
+        top_frame_id = session.top_frame_from(stop_event).id
+
+        # "br" and "fr" resolve to "breakpoint" and "frame".
+        self.assertEvaluate("br list", "Current breakpoints:", top_frame_id)
+        self.assertEvaluate("fr info", r"frame #0: .*main", top_frame_id)
+        # "p/x" resolves to "dwim-print" with a gdb format.
+        self.assertEvaluate("p/x 255", "0x000000ff", top_frame_id)
+        # An expression that isn't a command is still evaluated as one.
+        self.assertEvaluate("40 + 2", "42", top_frame_id)

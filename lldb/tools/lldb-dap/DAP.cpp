@@ -511,18 +511,32 @@ ReplMode DAP::DetectReplMode(lldb::SBFrame &frame, std::string &expression,
   std::string first = first_tok.str();
   const char *first_cstr = first.c_str();
   lldb::SBCommandInterpreter interpreter = debugger.GetCommandInterpreter();
-  const bool is_command = interpreter.CommandExists(first_cstr) ||
-                          interpreter.UserCommandExists(first_cstr) ||
-                          interpreter.AliasExists(first_cstr);
+  bool is_command = interpreter.CommandExists(first_cstr) ||
+                    interpreter.UserCommandExists(first_cstr) ||
+                    interpreter.AliasExists(first_cstr);
+
+  // Try resolving the first token like the command line does, so that
+  // abbreviations ("br") and format suffixes ("p/x") are commands too. 
+  // An alias that needs arguments doesn't resolve on its own.
+  if (!is_command && !first.empty()) {
+    lldb::SBCommandReturnObject resolved;
+    interpreter.ResolveCommand(first_cstr, resolved);
+    is_command = resolved.Succeeded();
+  }
+  if (!is_command)
+    return ReplMode::Variable;
+
   // Check both variables visible in the current frame and globals/statics.
   // A valid frame should not prevent a global from taking precedence over an
   // LLDB command with the same name.
   const bool is_variable =
       (frame && frame.FindVariable(first_cstr).IsValid()) ||
       target.FindFirstGlobalVariable(first_cstr).IsValid();
+  if (!is_variable)
+    return ReplMode::Command;
 
-  // If we have both a variable and command, warn the user about the conflict.
-  if (!partial_expression && is_command && is_variable) {
+  // We have both a variable and command, warn the user about the conflict.
+  if (!partial_expression) {
     const std::string warning_msg =
         llvm::formatv("warning: Expression '{}' is both an LLDB command and "
                       "variable. It will be evaluated as "
@@ -534,10 +548,7 @@ ReplMode DAP::DetectReplMode(lldb::SBFrame &frame, std::string &expression,
 
   // Variables take preference to commands in auto, since commands can always
   // be called using the command_escape_prefix
-  if (is_variable)
-    return ReplMode::Variable;
-
-  return is_command ? ReplMode::Command : ReplMode::Variable;
+  return ReplMode::Variable;
 }
 
 std::optional<protocol::Source> DAP::ResolveSource(const lldb::SBFrame &frame) {
