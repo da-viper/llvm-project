@@ -18,9 +18,8 @@
 using namespace lldb_private;
 using namespace llvm;
 
-static StructuredData::ObjectSP ParseJSONValue(json::Value &value);
-static StructuredData::ObjectSP ParseJSONObject(json::Object *object);
-static StructuredData::ObjectSP ParseJSONArray(json::Array *array);
+static StructuredData::ObjectSP ParseJSONObject(const json::Object *object);
+static StructuredData::ObjectSP ParseJSONArray(const json::Array *array);
 
 StructuredData::ObjectSP StructuredData::ParseJSON(llvm::StringRef json_text) {
   llvm::Expected<json::Value> value = json::parse(json_text);
@@ -55,11 +54,12 @@ bool StructuredData::IsRecordType(const ObjectSP object_sp) {
          object_sp->GetType() == lldb::eStructuredDataTypeDictionary;
 }
 
-static StructuredData::ObjectSP ParseJSONValue(json::Value &value) {
-  if (json::Object *O = value.getAsObject())
+StructuredData::ObjectSP
+StructuredData::ParseJSONValue(const json::Value &value) {
+  if (const json::Object *O = value.getAsObject())
     return ParseJSONObject(O);
 
-  if (json::Array *A = value.getAsArray())
+  if (const json::Array *A = value.getAsArray())
     return ParseJSONArray(A);
 
   if (auto s = value.getAsString())
@@ -83,21 +83,21 @@ static StructuredData::ObjectSP ParseJSONValue(json::Value &value) {
   return StructuredData::ObjectSP();
 }
 
-static StructuredData::ObjectSP ParseJSONObject(json::Object *object) {
+static StructuredData::ObjectSP ParseJSONObject(const json::Object *object) {
   auto dict_up = std::make_unique<StructuredData::Dictionary>();
   for (auto &KV : *object) {
     StringRef key = KV.first;
     json::Value value = KV.second;
-    if (StructuredData::ObjectSP value_sp = ParseJSONValue(value))
+    if (auto value_sp = StructuredData::ParseJSONValue(value))
       dict_up->AddItem(key, value_sp);
   }
   return std::move(dict_up);
 }
 
-static StructuredData::ObjectSP ParseJSONArray(json::Array *array) {
+static StructuredData::ObjectSP ParseJSONArray(const json::Array *array) {
   auto array_up = std::make_unique<StructuredData::Array>();
-  for (json::Value &value : *array) {
-    if (StructuredData::ObjectSP value_sp = ParseJSONValue(value))
+  for (const json::Value &value : *array) {
+    if (auto value_sp = StructuredData::ParseJSONValue(value))
       array_up->AddItem(value_sp);
   }
   return std::move(array_up);
